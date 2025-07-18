@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Paiement sécurisé</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>💳 Paiement sécurisé</h1>
+    <p id="codeDisplay"></p>
+    <form id="form">
+      <input type="text" id="code_secret" placeholder="Code de paiement (123456)" required />
+      <button type="submit">Valider</button>
+    </form>
+    <p id="msg"></p>
+  </div>
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get("code");
+    document.getElementById("codeDisplay").innerText = "Code de commande : " + code;
+
+    form.onsubmit = async function(e) {
+      e.preventDefault();
+      const res = await fetch("/api/payer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: code,
+          code_secret: document.getElementById("code_secret").value
+        })
+      });
+      const data = await res.json();
+      msg.innerText = data.message;
+    };
+  </script>
+</body>
+</html>
