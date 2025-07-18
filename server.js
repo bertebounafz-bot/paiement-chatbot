@@ -1,42 +1,78 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const app = express();
-const PORT = process.env.PORT || 10000;
+const QRCode = require("qrcode");
+const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
+const axios = require("axios");
 
+const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static("public"));
 
-let commandes = [];
+const PORT = process.env.PORT || 3000;
 
-app.post("/api/commande", (req, res) => {
-  const data = req.body;
-  const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-  const commande = { ...data, code, paye: false };
-  commandes.push(commande);
-  const lien = `https://paiement-render.onrender.com/payer.html?code=${code}`;
-  res.json({ lien_paiement: lien });
-});
+function generateOrderCode(nom) {
+  const prefix = nom.substring(0, 3).toUpperCase();
+  const number = Math.floor(Math.random() * 9000 + 1000);
+  return `CMD-${prefix}-${number}`;
+}
 
-app.post("/api/payer", (req, res) => {
-  const { code, code_secret } = req.body;
-  if (code_secret !== "123456") {
-    return res.status(400).json({ message: "Code de paiement incorrect." });
+async function createTicketPDF(nom, cat, tel, code, index) {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([300, 200]);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const qrText = `${nom} - ${cat} - ${tel} - ${code} - Ticket ${index + 1}`;
+
+  const qrImageDataURL = await QRCode.toDataURL(qrText);
+  const qrImageBytes = Buffer.from(qrImageDataURL.split(",")[1], "base64");
+  const qrImage = await pdf.embedPng(qrImageBytes);
+
+  page.drawText(`🎟️ Ticket - ${cat}`, { x: 20, y: 170, size: 14, font });
+  page.drawText(`👤 ${nom}`, { x: 20, y: 150, size: 12, font });
+  page.drawText(`📞 ${tel}`, { x: 20, y: 135, size: 12, font });
+  page.drawText(`#${code} - N°${index + 1}`, { x: 20, y: 120, size: 12, font });
+  page.drawImage(qrImage, { x: 20, y: 20, width: 100, height: 100 });
+
+  return await pdf.saveAsBase64({ dataUri: false });
+}
+
+app.post("/api/payer", async (req, res) => {
+  const { nom, tel, cat1, qt1, cat2, qt2, cat3, qt3, code } = req.body;
+  const commandCode = generateOrderCode(nom);
+  const billets = [];
+
+  if (cat1 && qt1) billets.push({ cat: cat1, qt: parseInt(qt1) });
+  if (cat2 && qt2) billets.push({ cat: cat2, qt: parseInt(qt2) });
+  if (cat3 && qt3) billets.push({ cat: cat3, qt: parseInt(qt3) });
+
+  const attachments = [];
+
+  for (const billet of billets) {
+    for (let i = 0; i < billet.qt; i++) {
+      const pdf = await createTicketPDF(nom, billet.cat, tel, commandCode, i);
+      attachments.push({
+        filename: `ticket-${billet.cat}-${i + 1}.pdf`,
+        content: pdf,
+        encoding: "base64"
+      });
+    }
   }
 
-  const commande = commandes.find(c => c.code === code);
-  if (!commande) return res.status(404).json({ message: "Commande introuvable." });
+  // Envoi du webhook à WAautoChat
+  const webhookURL = "https://wautochat.com/webhook?privateKey=PL-e...."; // Remplace par ton vrai lien complet ici
+  await axios.post(webhookURL, {
+    tel: `${tel}@c.us`,
+    nom_client: nom,
+    code_commande: commandCode,
+    billets,
+    status: "payé",
+    fichiers: attachments
+  });
 
-  commande.paye = true;
-
-  fetch("https://wautochat.com/webhook?privateKey=TON_WEBHOOK_KEY", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(commande)
-  }).catch(err => console.error("Erreur webhook:", err));
-
-  res.json({ message: "✅ Paiement validé. Ton billet arrive sur WhatsApp." });
+  res.json({ message: "Paiement validé, tickets générés." });
 });
 
-app.listen(PORT, () => console.log("✅ Serveur actif sur le port", PORT));
+app.listen(PORT, () => {
+  console.log("Serveur en ligne sur le port", PORT);
+});
