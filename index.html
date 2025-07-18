@@ -1,38 +1,93 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Paiement sécurisé</title>
-  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      background-color: #f4f4f4;
+      font-family: sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .box {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.1);
+      text-align: center;
+      width: 100%;
+      max-width: 400px;
+    }
+    input {
+      width: 100%;
+      padding: 0.8rem;
+      font-size: 1rem;
+      margin-top: 1rem;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 0.8rem 2rem;
+      font-size: 1rem;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .code {
+      font-weight: bold;
+      margin-top: 1rem;
+      color: #333;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h1>💳 Paiement sécurisé</h1>
-    <p id="codeDisplay"></p>
-    <form id="form">
-      <input type="text" id="code_secret" placeholder="Code de paiement (123456)" required />
-      <button type="submit">Valider</button>
-    </form>
-    <p id="msg"></p>
+  <div class="box">
+    <h2>💳 Paiement sécurisé</h2>
+    <div id="commande"></div>
+    <input type="text" id="code" placeholder="Code de paiement (123456)" />
+    <button onclick="valider()">Valider</button>
+    <div id="resultat" class="code"></div>
   </div>
-  <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get("code");
-    document.getElementById("codeDisplay").innerText = "Code de commande : " + code;
 
-    form.onsubmit = async function(e) {
-      e.preventDefault();
-      const res = await fetch("/api/payer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: code,
-          code_secret: document.getElementById("code_secret").value
-        })
-      });
-      const data = await res.json();
-      msg.innerText = data.message;
-    };
+  <script>
+    // Lire les paramètres de l'URL
+    const params = new URLSearchParams(window.location.search);
+    const nom = params.get("nom");
+    const tel = params.get("tel");
+    const cat1 = params.get("cat1");
+    const qt1 = params.get("qt1");
+
+    // Générer un "code de commande"
+    const codeCommande = (nom && tel) ? `CMD-${nom?.slice(0, 3).toUpperCase()}-${tel?.slice(-4)}` : "inconnu";
+
+    // Afficher dans le HTML
+    document.getElementById("commande").innerHTML = `🧾 Code de commande : <span class="code">${codeCommande}</span>`;
+
+    function valider() {
+      const code = document.getElementById("code").value.trim();
+      if (code === "") {
+        alert("Veuillez entrer un code !");
+        return;
+      }
+
+      // Simuler un paiement réussi
+      document.getElementById("resultat").innerText = "✅ Paiement validé ! 🎟️";
+
+      // Simuler l'envoi du webhook (à remplacer plus tard)
+      console.log("Envoi du ticket avec :");
+      console.log({ nom, tel, cat1, qt1, codeCommande, codePaiement: code });
+
+      // Ici, on pourrait déclencher un webhook avec `fetch()`
+    }
   </script>
 </body>
 </html>
+
