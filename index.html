@@ -1,87 +1,56 @@
 <!DOCTYPE html>
 <html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Paiement sécurisé</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <div class="container">
-      <h1>💳 Paiement sécurisé</h1>
-      <p>
-        🧾 Code de commande :
-        <span id="code_commande">inconnu</span>
-      </p>
-      <input
-        type="text"
-        id="code_paiement"
-        placeholder="Code de paiement (123456)"
-      />
-      <button onclick="validerPaiement()">Valider</button>
-      <div id="confirmation"></div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Paiement sécurisé</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>💳 Paiement sécurisé</h1>
+    <div id="commande-box">
+      <p>🧾 Code de commande : <span id="code-commande">inconnu</span></p>
     </div>
 
-    <script>
-      const urlParams = new URLSearchParams(window.location.search);
-      const nom = urlParams.get("nom");
-      const tel = urlParams.get("tel");
-      const cat1 = urlParams.get("cat1");
-      const qt1 = urlParams.get("qt1");
-      const cat2 = urlParams.get("cat2");
-      const qt2 = urlParams.get("qt2");
-      const cat3 = urlParams.get("cat3");
-      const qt3 = urlParams.get("qt3");
+    <form id="paiement-form">
+      <input type="text" id="code" placeholder="Code de paiement (123456)" required />
+      <button type="submit">Valider</button>
+    </form>
 
-      if (!nom || nom.includes(" ")) {
-        document.body.innerHTML =
-          "<h2 style='color:red'>⛔ Le nom ne doit pas contenir d’espace</h2>";
-        throw new Error("Nom invalide");
-      }
+    <div id="confirmation" style="display: none">
+      <p class="valide">✅ Paiement validé ! 🎫</p>
+      <a id="download-link" href="#" target="_blank">📎 Télécharger ton ticket</a>
+    </div>
+  </div>
 
-      const commande = {
-        nom,
-        tel,
-        cat1,
-        qt1,
-        cat2,
-        qt2,
-        cat3,
-        qt3,
-      };
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const codeCommande = urlParams.get("code") || "inconnu";
+    document.getElementById("code-commande").textContent = codeCommande;
 
-      fetch("/api/commande", {
+    const form = document.getElementById("paiement-form");
+    const confirmation = document.getElementById("confirmation");
+    const lienTicket = document.getElementById("download-link");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = document.getElementById("code").value;
+
+      const res = await fetch("/api/payer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(commande),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          document.getElementById("code_commande").innerText = data.code;
-          window.codeCommande = data.code;
-        });
+        body: JSON.stringify({ code }),
+      });
 
-      function validerPaiement() {
-        const codePaiement = document.getElementById("code_paiement").value;
-        fetch("/api/payer", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            code: window.codeCommande,
-            code_paiement: codePaiement,
-          }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success) {
-              document.getElementById("confirmation").innerHTML =
-                "<p style='color:green'>✅ Paiement validé ! 🎟️</p>";
-            } else {
-              document.getElementById("confirmation").innerHTML =
-                "<p style='color:red'>⛔ Erreur : " + data.message + "</p>";
-            }
-          });
+      const data = await res.json();
+      if (data.valide && data.ticket_pdf) {
+        confirmation.style.display = "block";
+        lienTicket.href = data.ticket_pdf;
+      } else {
+        alert("Code invalide ou paiement non reconnu.");
       }
-    </script>
-  </body>
+    });
+  </script>
+</body>
 </html>
