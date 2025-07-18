@@ -1,93 +1,87 @@
 <!DOCTYPE html>
 <html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Paiement sécurisé</title>
-  <style>
-    body {
-      background-color: #f4f4f4;
-      font-family: sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-    }
-    .box {
-      background: white;
-      padding: 2rem;
-      border-radius: 8px;
-      box-shadow: 0 0 20px rgba(0,0,0,0.1);
-      text-align: center;
-      width: 100%;
-      max-width: 400px;
-    }
-    input {
-      width: 100%;
-      padding: 0.8rem;
-      font-size: 1rem;
-      margin-top: 1rem;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-    }
-    button {
-      margin-top: 1rem;
-      padding: 0.8rem 2rem;
-      font-size: 1rem;
-      background-color: #28a745;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .code {
-      font-weight: bold;
-      margin-top: 1rem;
-      color: #333;
-    }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <h2>💳 Paiement sécurisé</h2>
-    <div id="commande"></div>
-    <input type="text" id="code" placeholder="Code de paiement (123456)" />
-    <button onclick="valider()">Valider</button>
-    <div id="resultat" class="code"></div>
-  </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Paiement sécurisé</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>💳 Paiement sécurisé</h1>
+      <p>
+        🧾 Code de commande :
+        <span id="code_commande">inconnu</span>
+      </p>
+      <input
+        type="text"
+        id="code_paiement"
+        placeholder="Code de paiement (123456)"
+      />
+      <button onclick="validerPaiement()">Valider</button>
+      <div id="confirmation"></div>
+    </div>
 
-  <script>
-    // Lire les paramètres de l'URL
-    const params = new URLSearchParams(window.location.search);
-    const nom = params.get("nom");
-    const tel = params.get("tel");
-    const cat1 = params.get("cat1");
-    const qt1 = params.get("qt1");
+    <script>
+      const urlParams = new URLSearchParams(window.location.search);
+      const nom = urlParams.get("nom");
+      const tel = urlParams.get("tel");
+      const cat1 = urlParams.get("cat1");
+      const qt1 = urlParams.get("qt1");
+      const cat2 = urlParams.get("cat2");
+      const qt2 = urlParams.get("qt2");
+      const cat3 = urlParams.get("cat3");
+      const qt3 = urlParams.get("qt3");
 
-    // Générer un "code de commande"
-    const codeCommande = (nom && tel) ? `CMD-${nom?.slice(0, 3).toUpperCase()}-${tel?.slice(-4)}` : "inconnu";
-
-    // Afficher dans le HTML
-    document.getElementById("commande").innerHTML = `🧾 Code de commande : <span class="code">${codeCommande}</span>`;
-
-    function valider() {
-      const code = document.getElementById("code").value.trim();
-      if (code === "") {
-        alert("Veuillez entrer un code !");
-        return;
+      if (!nom || nom.includes(" ")) {
+        document.body.innerHTML =
+          "<h2 style='color:red'>⛔ Le nom ne doit pas contenir d’espace</h2>";
+        throw new Error("Nom invalide");
       }
 
-      // Simuler un paiement réussi
-      document.getElementById("resultat").innerText = "✅ Paiement validé ! 🎟️";
+      const commande = {
+        nom,
+        tel,
+        cat1,
+        qt1,
+        cat2,
+        qt2,
+        cat3,
+        qt3,
+      };
 
-      // Simuler l'envoi du webhook (à remplacer plus tard)
-      console.log("Envoi du ticket avec :");
-      console.log({ nom, tel, cat1, qt1, codeCommande, codePaiement: code });
+      fetch("/api/commande", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(commande),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          document.getElementById("code_commande").innerText = data.code;
+          window.codeCommande = data.code;
+        });
 
-      // Ici, on pourrait déclencher un webhook avec `fetch()`
-    }
-  </script>
-</body>
+      function validerPaiement() {
+        const codePaiement = document.getElementById("code_paiement").value;
+        fetch("/api/payer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code: window.codeCommande,
+            code_paiement: codePaiement,
+          }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              document.getElementById("confirmation").innerHTML =
+                "<p style='color:green'>✅ Paiement validé ! 🎟️</p>";
+            } else {
+              document.getElementById("confirmation").innerHTML =
+                "<p style='color:red'>⛔ Erreur : " + data.message + "</p>";
+            }
+          });
+      }
+    </script>
+  </body>
 </html>
-
