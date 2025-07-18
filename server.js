@@ -1,78 +1,96 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const cors = require("cors");
-const QRCode = require("qrcode");
-const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
-const axios = require("axios");
+import express from "express";
+import bodyParser from "body-parser";
+import cors from "cors";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import PDFDocument from "pdfkit";
+import QRCode from "qrcode";
+import axios from "axios";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
+const PORT = process.env.PORT || 10000;
+
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static("public"));
 
-const PORT = process.env.PORT || 3000;
+let commandes = [];
 
-function generateOrderCode(nom) {
-  const prefix = nom.substring(0, 3).toUpperCase();
-  const number = Math.floor(Math.random() * 9000 + 1000);
-  return `CMD-${prefix}-${number}`;
-}
-
-async function createTicketPDF(nom, cat, tel, code, index) {
-  const pdf = await PDFDocument.create();
-  const page = pdf.addPage([300, 200]);
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const qrText = `${nom} - ${cat} - ${tel} - ${code} - Ticket ${index + 1}`;
-
-  const qrImageDataURL = await QRCode.toDataURL(qrText);
-  const qrImageBytes = Buffer.from(qrImageDataURL.split(",")[1], "base64");
-  const qrImage = await pdf.embedPng(qrImageBytes);
-
-  page.drawText(`🎟️ Ticket - ${cat}`, { x: 20, y: 170, size: 14, font });
-  page.drawText(`👤 ${nom}`, { x: 20, y: 150, size: 12, font });
-  page.drawText(`📞 ${tel}`, { x: 20, y: 135, size: 12, font });
-  page.drawText(`#${code} - N°${index + 1}`, { x: 20, y: 120, size: 12, font });
-  page.drawImage(qrImage, { x: 20, y: 20, width: 100, height: 100 });
-
-  return await pdf.saveAsBase64({ dataUri: false });
-}
+app.post("/api/commande", async (req, res) => {
+  const donnees = req.body;
+  const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+  const commande = { ...donnees, code, paye: false };
+  commandes.push(commande);
+  const lien = `https://paiement-chatbot.vercel.app/?nom=${donnees.nom}&tel=${donnees.tel}&cat1=${donnees.cat1}&qt1=${donnees.qt1}&cat2=${donnees.cat2}&qt2=${donnees.qt2}&cat3=${donnees.cat3}&qt3=${donnees.qt3}&code=${code}`;
+  res.json({ lien_paiement: lien, code });
+});
 
 app.post("/api/payer", async (req, res) => {
-  const { nom, tel, cat1, qt1, cat2, qt2, cat3, qt3, code } = req.body;
-  const commandCode = generateOrderCode(nom);
-  const billets = [];
+  const { code } = req.body;
+  const commande = commandes.find((c) => c.code === code);
 
-  if (cat1 && qt1) billets.push({ cat: cat1, qt: parseInt(qt1) });
-  if (cat2 && qt2) billets.push({ cat: cat2, qt: parseInt(qt2) });
-  if (cat3 && qt3) billets.push({ cat: cat3, qt: parseInt(qt3) });
+  if (!commande) return res.status(404).json({ error: "Commande introuvable" });
 
-  const attachments = [];
+  commande.paye = true;
 
-  for (const billet of billets) {
-    for (let i = 0; i < billet.qt; i++) {
-      const pdf = await createTicketPDF(nom, billet.cat, tel, commandCode, i);
-      attachments.push({
-        filename: `ticket-${billet.cat}-${i + 1}.pdf`,
-        content: pdf,
-        encoding: "base64"
-      });
-    }
-  }
+  // Génération du ticket PDF avec QR code
+  const doc = new PDFDocument();
+  const filePath = path.join(__dirname, "public", `${commande.code}.pdf`);
+  const writeStream = fs.createWriteStream(filePath);
+  doc.pipe(writeStream);
 
-  // Envoi du webhook à WAautoChat
-  const webhookURL = "https://wautochat.com/webhook?privateKey=PL-e...."; // Remplace par ton vrai lien complet ici
-  await axios.post(webhookURL, {
-    tel: `${tel}@c.us`,
-    nom_client: nom,
-    code_commande: commandCode,
-    billets,
-    status: "payé",
-    fichiers: attachments
+  doc.fontSize(20).text("🎟️ Ticket d'entrée", { align: "center" });
+  doc.moveDown();
+  doc.fontSize(14).text(`Nom : ${commande.nom}`);
+  doc.text(`Téléphone : ${commande.tel}`);
+  doc.text(`Code de commande : ${commande.code}`);
+  doc.moveDown();
+
+  if (commande.qt1 && commande.cat1)
+    doc.text(`→ ${commande.qt1} x ${commande.cat1}`);
+  if (commande.qt2 && commande.cat2)
+    doc.text(`→ ${commande.qt2} x ${commande.cat2}`);
+  if (commande.qt3 && commande.cat3)
+    doc.text(`→ ${commande.qt3} x ${commande.cat3}`);
+
+  const qrText = `https://paiement-chatbot.vercel.app/${commande.code}`;
+  const qrImage = await QRCode.toDataURL(qrText);
+  const image = qrImage.split(",")[1];
+  doc.image(Buffer.from(image, "base64"), {
+    fit: [150, 150],
+    align: "center",
   });
 
-  res.json({ message: "Paiement validé, tickets générés." });
+  doc.end();
+
+  writeStream.on("finish", async () => {
+    const url_pdf = `https://paiement-chatbot.vercel.app/${commande.code}.pdf`;
+
+    // Envoi du webhook à WAautoChat
+    const webhook = `https://wautochat.com/webhook?privateKey=PL-e...`; // à remplacer par ton vrai lien privé
+    await axios.post(webhook, {
+      nom: commande.nom,
+      tel: commande.tel,
+      cat1: commande.cat1,
+      qt1: commande.qt1,
+      cat2: commande.cat2,
+      qt2: commande.qt2,
+      cat3: commande.cat3,
+      qt3: commande.qt3,
+      code: commande.code,
+      statut: "payé",
+      ticket_pdf: url_pdf,
+    });
+
+    res.json({ valide: true, ticket_pdf: url_pdf });
+  });
 });
 
 app.listen(PORT, () => {
-  console.log("Serveur en ligne sur le port", PORT);
+  console.log("Serveur actif sur le port", PORT);
 });
+
